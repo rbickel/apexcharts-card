@@ -6,6 +6,8 @@
 [![Beta](https://img.shields.io/github/package-json/v/RomRider/apexcharts-card/dev?label=release%40dev)](https://github.com/RomRider/apexcharts-card/releases)
 [![Community Forum](https://img.shields.io/badge/community-forum-brightgreen.svg)](https://community.home-assistant.io/t/apexcharts-card-a-highly-customizable-graph-card/272877)
 
+
+
 # ApexCharts Card by [@RomRider](https://github.com/RomRider) <!-- omit in toc -->
 
 ![Header](https://github.com/RomRider/apexcharts-card/raw/master/docs/Header.png)
