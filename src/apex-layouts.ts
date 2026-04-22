@@ -185,7 +185,9 @@ function getChartType(config: ChartCardConfig, brush: boolean) {
   const series = brush ? config.series_in_brush : config.series_in_graph;
   if (series.length === 0) return DEFAULT_SERIE_TYPE;
   const firstType = series[0].type || DEFAULT_SERIE_TYPE;
-  return series.every((serie) => (serie.type || DEFAULT_SERIE_TYPE) === firstType) ? firstType : DEFAULT_SERIE_TYPE;
+  return series.every((singleSeries) => (singleSeries.type || DEFAULT_SERIE_TYPE) === firstType)
+    ? firstType
+    : DEFAULT_SERIE_TYPE;
 }
 
 function getFillOpacity(config: ChartCardConfig, brush: boolean): number[] {
