@@ -32,7 +32,7 @@ export function getLayoutConfig(
         (config.locale && locales[config.locale] && config.locale) ||
         (hass?.language && locales[hass.language] && hass.language) ||
         'en',
-      type: config.chart_type || DEFAULT_SERIE_TYPE,
+      type: getChartType(config, false),
       stacked: config?.stacked,
       foreColor: 'var(--primary-text-color)',
       width: '100%',
@@ -122,7 +122,7 @@ export function getBrushLayoutConfig(
         (config.locale && locales[config.locale] && config.locale) ||
         (hass?.language && locales[hass.language] && hass.language) ||
         'en',
-      type: config.chart_type || DEFAULT_SERIE_TYPE,
+      type: getChartType(config, true),
       stacked: config?.stacked,
       foreColor: 'var(--primary-text-color)',
       width: '100%',
@@ -177,6 +177,15 @@ export function getBrushLayoutConfig(
     },
   };
   return config.brush?.apex_config ? mergeDeep(def, evalApexConfig(config.brush.apex_config)) : def;
+}
+
+function getChartType(config: ChartCardConfig, brush: boolean) {
+  if (config.chart_type) return config.chart_type;
+  if (!config.stacked) return DEFAULT_SERIE_TYPE;
+  const series = brush ? config.series_in_brush : config.series_in_graph;
+  if (series.length === 0) return DEFAULT_SERIE_TYPE;
+  const firstType = series[0].type || DEFAULT_SERIE_TYPE;
+  return series.every((serie) => (serie.type || DEFAULT_SERIE_TYPE) === firstType) ? firstType : DEFAULT_SERIE_TYPE;
 }
 
 function getFillOpacity(config: ChartCardConfig, brush: boolean): number[] {

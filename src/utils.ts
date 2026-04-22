@@ -99,14 +99,18 @@ export function computeColors(colors: string[] | undefined): string[] {
 }
 
 export function computeColor(color: string): string {
+  const colorToHex = (inputColor: string): string => {
+    const parsedColor = new TinyColor(inputColor);
+    return parsedColor.getAlpha() < 1 ? parsedColor.toHex8String() : parsedColor.toHexString();
+  };
   if (color[0] === '#') {
-    return new TinyColor(color).toHexString();
+    return colorToHex(color);
   } else if (color.substring(0, 3) === 'var') {
-    return new TinyColor(
+    return colorToHex(
       window.getComputedStyle(document.documentElement).getPropertyValue(color.substring(4).slice(0, -1)).trim(),
-    ).toHexString();
+    );
   } else {
-    return new TinyColor(color).toHexString();
+    return colorToHex(color);
   }
 }
 
