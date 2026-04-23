@@ -517,7 +517,7 @@ views:
           - type: custom:apexcharts-card
             header:
               show: true
-              title: rangeArea
+              title: rangeArea with data_generator
             chart_type: rangeArea
             graph_span: 24h
             series:
@@ -529,6 +529,30 @@ views:
                     const base = 50 + Math.sin(i / 3) * 15;
                     return [x, [base - 5, base + 5]];
                   });
+
+          - type: custom:apexcharts-card
+            header:
+              show: true
+              title: rangeArea with minmax aggregation
+            graph_span: 2h
+            series:
+              - entity: sensor.random0_100
+                name: Temperature Range
+                type: rangeArea
+                curve: smooth
+                opacity: 0.3
+                stroke_width: 1
+                group_by:
+                  duration: 10min
+                  func: minmax
+              - entity: sensor.random0_100
+                name: Average
+                type: line
+                stroke_width: 2
+                curve: smooth
+                group_by:
+                  duration: 10min
+                  func: avg
 
           - type: custom:apexcharts-card
             graph_span: 1h

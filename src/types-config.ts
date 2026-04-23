@@ -140,7 +140,7 @@ export type ChartCardPrettyTime = 'millisecond' | 'second' | 'minute' | 'hour' |
 
 export type GroupByFill = 'null' | 'last' | 'zero';
 
-export type GroupByFunc = 'raw' | 'avg' | 'min' | 'max' | 'last' | 'first' | 'sum' | 'median' | 'delta' | 'diff';
+export type GroupByFunc = 'raw' | 'avg' | 'min' | 'max' | 'last' | 'first' | 'sum' | 'median' | 'delta' | 'diff' | 'minmax';
 
 export interface ChartCardHeaderExternalConfig {
   show?: boolean;

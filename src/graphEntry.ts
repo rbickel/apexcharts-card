@@ -43,7 +43,7 @@ export default class GraphEntry {
 
   private _config: ChartCardSeriesConfig;
 
-  private _func: (item: EntityCachePoints) => number;
+  private _func: (item: EntityCachePoints) => number | null | [number, number];
 
   private _realStart: Date;
 
@@ -70,6 +70,7 @@ export default class GraphEntry {
       median: this._median,
       delta: this._delta,
       diff: this._diff,
+      minmax: this._minmax,
     };
     this._index = index;
     this._cache = config.statistics ? false : cache;
@@ -110,11 +111,11 @@ export default class GraphEntry {
     this._cache = this._config.statistics ? false : cache;
   }
 
-  get lastState(): number | null {
+  get lastState(): number | [number, number] | null {
     return this.history.length > 0 ? this.history[this.history.length - 1][1] : null;
   }
 
-  public nowValue(now: number, before: boolean): number | null {
+  public nowValue(now: number, before: boolean): number | [number, number] | null {
     if (this.history.length === 0) return null;
     const index = this.history.findIndex((point, index, arr) => {
       if (!before && point[0] > now) return true;
@@ -127,12 +128,20 @@ export default class GraphEntry {
 
   get min(): number | undefined {
     if (!this._computedHistory || this._computedHistory.length === 0) return undefined;
-    return Math.min(...this._computedHistory.flatMap((item) => (item[1] === null ? [] : [item[1]])));
+    return Math.min(...this._computedHistory.flatMap((item) => {
+      if (item[1] === null) return [];
+      if (Array.isArray(item[1])) return [item[1][0]]; // Min of range
+      return [item[1]];
+    }));
   }
 
   get max(): number | undefined {
     if (!this._computedHistory || this._computedHistory.length === 0) return undefined;
-    return Math.max(...this._computedHistory.flatMap((item) => (item[1] === null ? [] : [item[1]])));
+    return Math.max(...this._computedHistory.flatMap((item) => {
+      if (item[1] === null) return [];
+      if (Array.isArray(item[1])) return [item[1][1]]; // Max of range
+      return [item[1]];
+    }));
   }
 
   public minMaxWithTimestamp(
@@ -142,7 +151,7 @@ export default class GraphEntry {
   ): { min: HistoryPoint; max: HistoryPoint } | undefined {
     if (!this._computedHistory || this._computedHistory.length === 0) return undefined;
     if (this._computedHistory.length === 1)
-      return { min: [start, this._computedHistory[0][1]], max: [end, this._computedHistory[0][1]] };
+      return { min: [start, this._computedHistory[0][1]] as HistoryPoint, max: [end, this._computedHistory[0][1]] as HistoryPoint };
     const minMax = this._computedHistory.reduce(
       (acc: { min: HistoryPoint; max: HistoryPoint }, point) => {
         if (point[1] === null) return acc;
@@ -267,17 +276,33 @@ export default class GraphEntry {
         const newHistory = await this._fetchStatistics(fetchStart, fetchEnd, this._config.statistics.period);
         if (newHistory && newHistory.length > 0) {
           updateGraphHistory = true;
-          let lastNonNull: number | null = null;
+          let lastNonNull: number | null | [number, number] = null;
           if (history && history.data && history.data.length > 0) {
             lastNonNull = history.data[history.data.length - 1][1];
           }
           newStateHistory = newHistory.map((item) => {
-            let stateParsed: number | null = null;
-            [lastNonNull, stateParsed] = this._transformAndFill(
-              item[this._config.statistics?.type || DEFAULT_STATISTICS_TYPE],
-              item,
-              lastNonNull,
-            );
+            let stateParsed: number | null | [number, number] = null;
+
+            // For rangeArea series, extract both min and max from statistics
+            if (this._config.type === 'rangeArea' && item.min !== null && item.max !== null) {
+              stateParsed = [item.min, item.max];
+              // For fill_raw handling with range values
+              if (this._config.fill_raw === 'last' && Array.isArray(lastNonNull)) {
+                // Keep lastNonNull as is for range values
+              } else if (this._config.fill_raw === 'zero') {
+                if (stateParsed === null) stateParsed = [0, 0];
+              }
+              lastNonNull = stateParsed;
+            } else {
+              // Original single-value logic
+              let singleValue: number | null = null;
+              [lastNonNull as number | null, singleValue] = this._transformAndFill(
+                item[this._config.statistics?.type || DEFAULT_STATISTICS_TYPE],
+                item,
+                Array.isArray(lastNonNull) ? null : lastNonNull,
+              );
+              stateParsed = singleValue;
+            }
 
             let displayDate: Date | null = null;
             const startDate = new Date(item.start);
@@ -299,7 +324,7 @@ export default class GraphEntry {
               displayDate = new Date(item.end);
             }
 
-            return [displayDate.getTime(), !Number.isNaN(stateParsed) ? stateParsed : null];
+            return [displayDate.getTime(), stateParsed !== null && (typeof stateParsed === 'number' ? !Number.isNaN(stateParsed) : true) ? stateParsed : null] as HistoryPoint;
           });
         }
       } else {
@@ -317,7 +342,7 @@ export default class GraphEntry {
           if ((this._config.attribute || this._config.transform) && skipInitialState) {
             newHistory[0].shift();
           }
-          let lastNonNull: number | null = null;
+          let lastNonNull: number | null | [number, number] = null;
           if (history && history.data && history.data.length > 0) {
             lastNonNull = history.data[history.data.length - 1][1];
           }
@@ -331,7 +356,8 @@ export default class GraphEntry {
               currentState = item.state;
             }
             let stateParsed: number | null = null;
-            [lastNonNull, stateParsed] = this._transformAndFill(currentState, item, lastNonNull);
+            const scalarLastNonNull = Array.isArray(lastNonNull) ? null : lastNonNull;
+            [lastNonNull, stateParsed] = this._transformAndFill(currentState, item, scalarLastNonNull) as [number | null, number | null];
 
             if (this._config.attribute) {
               return [new Date(item.last_updated).getTime(), !Number.isNaN(stateParsed) ? stateParsed : null];
@@ -375,7 +401,7 @@ export default class GraphEntry {
     }
     if (this._config.group_by.func !== 'raw') {
       const res: EntityCachePoints = this._dataBucketer(history, moment.range(startHistory, end)).map((bucket) => {
-        return [bucket.timestamp, this._func(bucket.data)];
+        return [bucket.timestamp, this._func(bucket.data)] as HistoryPoint;
       });
       if ([undefined, 'line', 'area', 'rangeArea'].includes(this._config.type)) {
         while (res.length > 0 && res[0][1] === null) res.shift();
@@ -504,16 +530,16 @@ export default class GraphEntry {
         return false;
       });
     });
-    let lastNonNullBucketValue: number | null = null;
+    let lastNonNullBucketValue: number | [number, number] | null = null;
     const now = new Date().getTime();
     buckets.forEach((bucket, index) => {
       if (bucket.data.length === 0) {
         if (this._config.group_by.fill === 'last' && (bucket.timestamp <= now || this._config.data_generator)) {
-          bucket.data[0] = [bucket.timestamp, lastNonNullBucketValue];
+          bucket.data[0] = [bucket.timestamp, lastNonNullBucketValue] as HistoryPoint;
         } else if (this._config.group_by.fill === 'zero' && (bucket.timestamp <= now || this._config.data_generator)) {
-          bucket.data[0] = [bucket.timestamp, 0];
+          bucket.data[0] = [bucket.timestamp, 0] as HistoryPoint;
         } else if (this._config.group_by.fill === 'null') {
-          bucket.data[0] = [bucket.timestamp, null];
+          bucket.data[0] = [bucket.timestamp, null] as HistoryPoint;
         }
       } else {
         lastNonNullBucketValue = bucket.data.slice(-1)[0][1];
@@ -522,7 +548,7 @@ export default class GraphEntry {
         if (index > 0) {
           if (bucket.data.length === 0 || bucket.data[0][0] !== bucket.timestamp) {
             const prevBucketData = buckets[index - 1].data;
-            bucket.data.unshift([bucket.timestamp, prevBucketData[prevBucketData.length - 1][1]]);
+            bucket.data.unshift([bucket.timestamp, prevBucketData[prevBucketData.length - 1][1]] as HistoryPoint);
           }
         } else {
           const firstIndexAfter = history.data.findIndex((entry) => {
@@ -530,7 +556,7 @@ export default class GraphEntry {
             return false;
           });
           if (firstIndexAfter > 0) {
-            bucket.data.unshift([bucket.timestamp, history.data[firstIndexAfter - 1][1]]);
+            bucket.data.unshift([bucket.timestamp, history.data[firstIndexAfter - 1][1]] as HistoryPoint);
           }
         }
       }
@@ -555,10 +581,12 @@ export default class GraphEntry {
       let val = 0;
       if (entry && entry[1] === null) {
         // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
-        val = items[lastIndex][1]!;
+        const lastVal = items[lastIndex][1]!;
+        val = Array.isArray(lastVal) ? (lastVal[0] + lastVal[1]) / 2 : lastVal;
       } else {
         // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
-        val = entry[1]!;
+        const currentVal = entry[1]!;
+        val = Array.isArray(currentVal) ? (currentVal[0] + currentVal[1]) / 2 : currentVal;
         lastIndex = index;
       }
       return sum + val;
@@ -574,9 +602,11 @@ export default class GraphEntry {
   private _minimum(items: EntityCachePoints): number | null {
     let min: number | null = null;
     items.forEach((item) => {
-      if (item[1] !== null)
-        if (min === null) min = item[1];
-        else min = Math.min(item[1], min);
+      if (item[1] !== null) {
+        const value = Array.isArray(item[1]) ? item[1][0] : item[1];
+        if (min === null) min = value;
+        else min = Math.min(value, min);
+      }
     });
     return min;
   }
@@ -584,32 +614,48 @@ export default class GraphEntry {
   private _maximum(items: EntityCachePoints): number | null {
     let max: number | null = null;
     items.forEach((item) => {
-      if (item[1] !== null)
-        if (max === null) max = item[1];
-        else max = Math.max(item[1], max);
+      if (item[1] !== null) {
+        const value = Array.isArray(item[1]) ? item[1][1] : item[1];
+        if (max === null) max = value;
+        else max = Math.max(value, max);
+      }
     });
     return max;
   }
 
-  private _last(items: EntityCachePoints): number | null {
+  private _last(items: EntityCachePoints): number | null | [number, number] {
     if (items.length === 0) return null;
-    return items.slice(-1)[0][1];
+    const lastValue = items.slice(-1)[0][1];
+    return lastValue;
   }
 
-  private _first(items: EntityCachePoints): number | null {
+  private _first(items: EntityCachePoints): number | null | [number, number] {
     if (items.length === 0) return null;
-    return items[0][1];
+    const firstValue = items[0][1];
+    return firstValue;
   }
 
   private _median(items: EntityCachePoints) {
-    // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
-    const itemsDup = this._filterNulls([...items]).sort((a, b) => a[1]! - b[1]!);
+    const itemsDup = this._filterNulls([...items]).sort((a, b) => {
+      const aVal = Array.isArray(a[1]) ? (a[1][0] + a[1][1]) / 2 : a[1]!;
+      const bVal = Array.isArray(b[1]) ? (b[1][0] + b[1][1]) / 2 : b[1]!;
+      return aVal - bVal;
+    });
     if (itemsDup.length === 0) return null;
-    if (itemsDup.length === 1) return itemsDup[0][1];
+    if (itemsDup.length === 1) {
+      const val = itemsDup[0][1];
+      return Array.isArray(val) ? (val[0] + val[1]) / 2 : val;
+    }
     const mid = Math.floor((itemsDup.length - 1) / 2);
-    if (itemsDup.length % 2 === 1) return itemsDup[mid][1];
-    // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
-    return (itemsDup[mid][1]! + itemsDup[mid + 1][1]!) / 2;
+    if (itemsDup.length % 2 === 1) {
+      const val = itemsDup[mid][1];
+      return Array.isArray(val) ? (val[0] + val[1]) / 2 : val;
+    }
+    const val1 = itemsDup[mid][1];
+    const val2 = itemsDup[mid + 1][1];
+    const num1 = Array.isArray(val1) ? (val1[0] + val1[1]) / 2 : val1!;
+    const num2 = Array.isArray(val2) ? (val2[0] + val2[1]) / 2 : val2!;
+    return (num1 + num2) / 2;
   }
 
   private _delta(items: EntityCachePoints): number | null {
@@ -622,10 +668,19 @@ export default class GraphEntry {
     const noNulls = this._filterNulls(items);
     const first = this._first(noNulls);
     const last = this._last(noNulls);
-    if (first === null || last === null) {
+    if (first === null || last === null || Array.isArray(first) || Array.isArray(last)) {
       return null;
     }
     return last - first;
+  }
+
+  private _minmax(items: EntityCachePoints): [number, number] | null {
+    const min = this._minimum(items);
+    const max = this._maximum(items);
+    if (min === null || max === null) {
+      return null;
+    }
+    return [min, max];
   }
 
   private _filterNulls(items: EntityCachePoints): EntityCachePoints {
