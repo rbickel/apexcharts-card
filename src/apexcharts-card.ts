@@ -442,7 +442,7 @@ class ChartsCard extends LitElement {
           serie.is_header_only = !serie.show.in_chart && !serie.show.in_brush;
           serie.needs_full_history = serie.show.in_chart ||
                                        serie.show.in_brush ||
-                                       serie.show.extremas ||
+                                       !!serie.show.extremas ||
                                        serie.show.in_header === 'before_now' ||
                                        serie.show.in_header === 'after_now';
 

@@ -20,6 +20,7 @@ import parse from 'parse-duration';
 import SparkMD5 from 'spark-md5';
 import { ChartCardSpanExtConfig, StatisticsPeriod } from './types-config';
 import * as pjson from '../package.json';
+import { historyFetcher } from './historyFetcher';
 
 export default class GraphEntry {
   private _computedHistory?: EntityCachePoints;
@@ -530,13 +531,14 @@ export default class GraphEntry {
     end: Date | undefined,
     skipInitialState: boolean,
   ): Promise<HassHistory | undefined> {
-    let url = 'history/period';
-    if (start) url += `/${start.toISOString()}`;
-    url += `?filter_entity_id=${this._entityID}`;
-    if (end) url += `&end_time=${end.toISOString()}`;
-    if (skipInitialState) url += '&skip_initial_state';
-    url += '&significant_changes_only=0';
-    return this._hass?.callApi('GET', url);
+    // Use batch fetcher for better performance when multiple series fetch concurrently
+    return historyFetcher.fetchForEntity(
+      this._entityID,
+      start,
+      end,
+      skipInitialState,
+      this._hass
+    );
   }
 
   private async _generateData(start: Date, end: Date): Promise<EntityEntryCache> {
@@ -673,7 +675,7 @@ export default class GraphEntry {
   private _createFillPoint(timestamp: number, lastValue: number | [number, number] | null): HistoryPoint {
     const fill = this._config.group_by.fill;
     if (fill === 'last') {
-      return [timestamp, lastValue];
+      return [timestamp, lastValue] as HistoryPoint;
     } else if (fill === 'zero') {
       return [timestamp, 0];
     } else if (fill === 'null') {
@@ -744,7 +746,8 @@ export default class GraphEntry {
 
     const history = await this._fetchRecent(start, end, false);
 
-    if (!history || !history[0] || history[0].length === 0) {
+    const historyData = history?.[0];
+    if (!historyData) {
       this._computedHistory = [];
       this._updating = false;
       return false;
@@ -752,7 +755,7 @@ export default class GraphEntry {
 
     // Process data points
     let lastNonNull: number | null | [number, number] = null;
-    const processed: EntityCachePoints = history[0].map((item) => {
+    const processed: EntityCachePoints = historyData.map((item) => {
       let currentState: unknown = null;
       if (this._config.attribute) {
         if (item.attributes && item.attributes[this._config.attribute] !== undefined) {
@@ -775,7 +778,7 @@ export default class GraphEntry {
     // Apply aggregation function to get single value
     const value = this._func(processed);
 
-    this._computedHistory = [[Date.now(), value]];
+    this._computedHistory = [[Date.now(), value] as HistoryPoint];
     this._updating = false;
     return true;
   }
