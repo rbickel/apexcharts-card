@@ -438,6 +438,14 @@ class ChartsCard extends LitElement {
             serie.color_threshold = sorted;
           }
 
+          // Determine if series is header-only (optimization)
+          serie.is_header_only = !serie.show.in_chart && !serie.show.in_brush;
+          serie.needs_full_history = serie.show.in_chart ||
+                                       serie.show.in_brush ||
+                                       serie.show.extremas ||
+                                       serie.show.in_header === 'before_now' ||
+                                       serie.show.in_header === 'after_now';
+
           if (serie.entity) {
             const editMode = getLovelace()?.editMode;
             // disable caching for editor
@@ -452,6 +460,8 @@ class ChartsCard extends LitElement {
               serie,
               this._config?.span,
             );
+            // Enable header-only mode for optimized fetching
+            graphEntry.headerOnlyMode = serie.is_header_only && !serie.needs_full_history;
             if (this._hass) graphEntry.hass = this._hass;
             return graphEntry;
           }

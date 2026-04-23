@@ -53,6 +53,8 @@ export default class GraphEntry {
 
   private _md5Config: string;
 
+  public headerOnlyMode = false;
+
   constructor(
     index: number,
     graphSpan: number,
@@ -207,6 +209,11 @@ export default class GraphEntry {
     }
     if (!this._entityState || this._updating) return false;
     this._updating = true;
+
+    // Fast path for header-only series
+    if (this.headerOnlyMode && this._config.group_by.func !== 'raw') {
+      return this._updateHeaderOnly();
+    }
 
     if (this._config.ignore_history) {
       let currentState: null | number | string = null;
@@ -610,6 +617,103 @@ export default class GraphEntry {
     ) {
       buckets.pop();
     }
+  }
+
+  private async _updateHeaderOnly(): Promise<boolean> {
+    const func = this._config.group_by.func;
+
+    // Use statistics API for aggregations when possible (and no transform)
+    if (['min', 'max', 'avg', 'sum'].includes(func) && !this._config.transform) {
+      return this._fetchHeaderFromStatistics();
+    }
+
+    // Otherwise, fetch minimal recent history
+    return this._fetchHeaderFromRecentHistory();
+  }
+
+  private async _fetchHeaderFromStatistics(): Promise<boolean> {
+    const func = this._config.group_by.func;
+    const period = this._determineBestStatisticsPeriod();
+
+    const stats = await this._fetchStatistics(
+      new Date(Date.now() - 3600000), // Last hour
+      new Date(),
+      period
+    );
+
+    if (!stats || stats.length === 0) {
+      this._computedHistory = [];
+      this._updating = false;
+      return false;
+    }
+
+    const latest = stats[stats.length - 1];
+    let value: number | null = null;
+
+    switch (func) {
+      case 'min': value = latest.min; break;
+      case 'max': value = latest.max; break;
+      case 'avg': value = latest.mean; break;
+      case 'sum': value = latest.sum; break;
+      default: value = latest.state; break;
+    }
+
+    // Create minimal history for header display
+    this._computedHistory = [[Date.now(), value]];
+    this._updating = false;
+    return true;
+  }
+
+  private async _fetchHeaderFromRecentHistory(): Promise<boolean> {
+    // Fetch only recent hour instead of full graph_span
+    const end = new Date();
+    const start = new Date(end.getTime() - 3600000); // 1 hour
+
+    const history = await this._fetchRecent(start, end, false);
+
+    if (!history || !history[0] || history[0].length === 0) {
+      this._computedHistory = [];
+      this._updating = false;
+      return false;
+    }
+
+    // Process data points
+    let lastNonNull: number | null | [number, number] = null;
+    const processed: EntityCachePoints = history[0].map((item) => {
+      let currentState: unknown = null;
+      if (this._config.attribute) {
+        if (item.attributes && item.attributes[this._config.attribute] !== undefined) {
+          currentState = item.attributes[this._config.attribute];
+        }
+      } else {
+        currentState = item.state;
+      }
+      let stateParsed: number | null = null;
+      const scalarLastNonNull = Array.isArray(lastNonNull) ? null : lastNonNull;
+      [lastNonNull, stateParsed] = this._transformAndFill(currentState, item, scalarLastNonNull) as [number | null, number | null];
+
+      if (this._config.attribute) {
+        return [new Date(item.last_updated).getTime(), !Number.isNaN(stateParsed) ? stateParsed : null];
+      } else {
+        return [new Date(item.last_changed).getTime(), !Number.isNaN(stateParsed) ? stateParsed : null];
+      }
+    });
+
+    // Apply aggregation function to get single value
+    const value = this._func(processed);
+
+    this._computedHistory = [[Date.now(), value]];
+    this._updating = false;
+    return true;
+  }
+
+  private _determineBestStatisticsPeriod(): StatisticsPeriod {
+    // Choose statistics period based on group_by duration
+    if (this._groupByDurationMs <= 300000) return '5minute';
+    if (this._groupByDurationMs <= 3600000) return 'hour';
+    if (this._groupByDurationMs <= 86400000) return 'day';
+    if (this._groupByDurationMs <= 604800000) return 'week';
+    return 'month';
   }
 
   private _sum(items: EntityCachePoints): number {

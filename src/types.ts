@@ -29,6 +29,8 @@ export interface ChartCardSeriesConfig extends ChartCardSeriesExternalConfig {
   };
   show: ChartCardSeriesShowConfig;
   ignore_history: boolean;
+  is_header_only?: boolean;
+  needs_full_history?: boolean;
 }
 
 export interface ChartCardSeriesShowConfig extends ChartCardSeriesShowConfigExt {
