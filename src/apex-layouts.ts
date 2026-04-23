@@ -182,7 +182,7 @@ export function getBrushLayoutConfig(
 function getFillOpacity(config: ChartCardConfig, brush: boolean): number[] {
   const series = brush ? config.series_in_brush : config.series_in_graph;
   return series.map((serie) => {
-    return serie.opacity !== undefined ? serie.opacity : serie.type === 'area' ? DEFAULT_AREA_OPACITY : 1;
+    return serie.opacity !== undefined ? serie.opacity : ['area', 'rangeArea'].includes(serie.type || '') ? DEFAULT_AREA_OPACITY : 1;
   });
 }
 
@@ -461,7 +461,7 @@ function getStrokeWidth(config: ChartCardConfig, brush: boolean) {
     if (serie.stroke_width !== undefined) {
       return serie.stroke_width;
     }
-    return [undefined, 'line', 'area'].includes(serie.type) ? 5 : 0;
+    return [undefined, 'line', 'area', 'rangeArea'].includes(serie.type) ? 5 : 0;
   });
 }
 

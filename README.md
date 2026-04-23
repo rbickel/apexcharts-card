@@ -166,10 +166,10 @@ The card strictly validates all the options available (but not for the `apex_con
 | `name` | string | | v1.0.0 | Override the name of the entity |
 | `stack_group` | string | | v2.1.0 | When `stacked` is `true`, groups the different series with the name `stack_group` together. Only works for `type: column`. All series' names need to be be unique because of a bug in apexcharts.js |
 | `color` | string | | v1.1.0 | Color of the serie. Supported formats: `yellow`, `#aabbcc`, `rgb(128, 128, 128)` or `var(--css-color-variable)` |
-| `opacity` | number | `0.7` for `area`<br/>else `1` | v1.6.0 | The opacity of the line or filled area, between `0` and `1` |
-| `stroke_width` | number | `5` | v1.6.0 | Change the width of the line. Only works for `area` and `line` |
+| `opacity` | number | `0.7` for `area`/`rangeArea`<br/>else `1` | v1.6.0 | The opacity of the line or filled area, between `0` and `1` |
+| `stroke_width` | number | `5` | v1.6.0 | Change the width of the line. Only works for `area`, `rangeArea` and `line` |
 | `stroke_dash` | number or array | `0` | v2.1.0 | Creates a dashed line. The higher the number, the bigger the dash. An array can be used to specify more complex patterns. |
-| `type` | string | `line` | v1.0.0 | `line`, `area` or `column` are supported for now |
+| `type` | string | `line` | v1.0.0 | `line`, `area`, `rangeArea` or `column` are supported |
 | `curve` | string | `smooth` | v1.0.0 | `smooth` (nice curve),  `straight` (direct line between points) or `stepline` (flat line until next point then straight up or down), `monotoneCubic` (create a monotone cubic spline) |
 | ~~`extend_to_end`~~ | ~~boolean~~ | ~~`true`~~ | ~~v1.0.0~~ | **DEPRECATED since v2.0.0** ~~If the last data is older than the end time displayed on the graph, setting to true will extend the value until the end of the timeline. Only works for `line` and `area` types.~~ |
 | `extend_to` | boolean or string | `end` | v2.0.0 | If the value is `end`, it will extend the line/area to the end of the chart. With `now`, it will extend it to the current time (usefull for chart showing current and future data). If `false` it will not do anything. Only available for `line` and `area` types. |
@@ -338,8 +338,9 @@ The position of the marker will only update when the card updates (state change 
 
 | Name | Since | Description |
 | ---- | :---: | ----------- |
-| `line` | v1.0.0 | This is the default and will show a timeline. It is compatible with `series.type` = `column`, `line` and `area` |
+| `line` | v1.0.0 | This is the default and will show a timeline. It is compatible with `series.type` = `column`, `line`, `area` and `rangeArea` |
 | `scatter` | v1.4.0 | Displays a cloud of points without a line between the values |
+| `rangeArea` | v2.2.3 | Displays a timeline range area (`y: [low, high]`) |
 | `pie` | v1.4.0 | This will display a pie chart with the last value computed for each sensor |
 | `donut` | v1.4.0 | This will display a donut chart with the last value computed of each sensor, the same as pie but with a hole in the center |
 | `radialBar` | v1.4.0 | This will display a radial bar chart with the last value computed for each sensor. The value is represented in percentage only. It is required to provide `min` and `max` for each series displayed as it requires converting the value into a percentage. The default value for `min` is `0` and for `max` it is `100`. This graph works well if you want to display sensors natively in percentages |
@@ -810,8 +811,8 @@ If enabled, it might:
 * completely render `apex_config.fill` options unusable, and if you do, it will break the card
 
 Now that you are warned, it works with:
-* `chart_type`: `radialBar`, `line`, `pie`, `donut`
-* `series`'s `type`: `column`, `area`, `line`
+* `chart_type`: `radialBar`, `line`, `rangeArea`, `pie`, `donut`
+* `series`'s `type`: `column`, `area`, `rangeArea`, `line`
 
 Some notes:
 * For `series`'s `type: column`, the full bar will be of the color defined. A gradient is not possible
@@ -969,6 +970,15 @@ series:
     group_by:
       func: avg
       duration: 30min
+```
+
+### Local rangeArea HTML samples
+
+You can run standalone ApexCharts `rangeArea` examples locally with:
+
+```bash
+npm ci
+open test/range-area-sample.html
 ```
 
 ### Aggregating data

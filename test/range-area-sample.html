@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>ApexCharts rangeArea examples</title>
+    <script src="../node_modules/apexcharts/dist/apexcharts.min.js"></script>
+    <style>
+      body {
+        font-family: Arial, sans-serif;
+        margin: 24px;
+      }
+      .chart {
+        max-width: 900px;
+        margin-bottom: 32px;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>rangeArea examples</h1>
+    <p>Open this file directly in a browser after running <code>npm ci</code>.</p>
+    <div id="range-area-1" class="chart"></div>
+    <div id="range-area-2" class="chart"></div>
+    <script>
+      const now = Date.now();
+      const hour = 3600 * 1000;
+      const samples = Array.from({ length: 24 }, (_, i) => {
+        const t = now - (23 - i) * hour;
+        const base = 18 + Math.sin(i / 3) * 2;
+        const spread = 1.5 + Math.cos(i / 4) * 0.8;
+        return { x: t, y: [Number((base - spread).toFixed(2)), Number((base + spread).toFixed(2))] };
+      });
+      new ApexCharts(document.querySelector('#range-area-1'), {
+        chart: { type: 'rangeArea', height: 300, toolbar: { show: false } },
+        series: [{ name: 'Temperature range', data: samples }],
+        xaxis: { type: 'datetime' },
+        yaxis: { decimalsInFloat: 1 },
+        stroke: { width: 1 },
+        fill: { opacity: 0.35 },
+      }).render();
+
+      new ApexCharts(document.querySelector('#range-area-2'), {
+        chart: { type: 'line', height: 300, toolbar: { show: false } },
+        series: [
+          { name: 'Confidence band', type: 'rangeArea', data: samples },
+          {
+            name: 'Average',
+            type: 'line',
+            data: samples.map((point) => ({ x: point.x, y: Number(((point.y[0] + point.y[1]) / 2).toFixed(2)) })),
+          },
+        ],
+        xaxis: { type: 'datetime' },
+        stroke: { width: [1, 2] },
+        fill: { opacity: [0.35, 1] },
+      }).render();
+    </script>
+  </body>
+</html>
