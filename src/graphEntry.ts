@@ -513,57 +513,96 @@ export default class GraphEntry {
   }
 
   private _dataBucketer(history: EntityEntryCache, timeRange: DateRange): HistoryBuckets {
-    const ranges = Array.from(timeRange.reverseBy('milliseconds', { step: this._groupByDurationMs })).reverse();
-    // const res: EntityCachePoints[] = [[]];
+    // Optimized bucketing using hash map approach for O(n) complexity instead of O(n*m)
+    const bucketDuration = this._groupByDurationMs;
     const buckets: HistoryBuckets = [];
-    ranges.forEach((range, index) => {
-      buckets[index] = { timestamp: range.valueOf(), data: [] };
-    });
-    history?.data.forEach((entry) => {
-      buckets.some((bucket, index) => {
-        if (bucket.timestamp > entry[0] && index > 0) {
-          if (entry[0] >= buckets[index - 1].timestamp) {
-            buckets[index - 1].data.push(entry);
-            return true;
-          }
-        }
-        return false;
+    const bucketMap = new Map<number, number>(); // timestamp -> bucket index
+
+    // Step 1: Pre-allocate buckets (O(m))
+    let currentTime = timeRange.start.valueOf();
+    const endTime = timeRange.end.valueOf();
+    let bucketIndex = 0;
+
+    while (currentTime < endTime) {
+      buckets.push({
+        timestamp: currentTime,
+        data: []
       });
+      bucketMap.set(currentTime, bucketIndex);
+      currentTime += bucketDuration;
+      bucketIndex++;
+    }
+
+    // Step 2: Assign data points to buckets using hash map (O(n))
+    history?.data.forEach((entry) => {
+      // Calculate which bucket this entry belongs to
+      const bucketTimestamp = Math.floor(entry[0] / bucketDuration) * bucketDuration;
+      const index = bucketMap.get(bucketTimestamp);
+
+      // Assign to the bucket (entries belong to the bucket they fall into)
+      if (index !== undefined && index < buckets.length && index >= 0) {
+        buckets[index].data.push(entry);
+      }
     });
+
+    // Step 3: Fill empty buckets and handle start_with_last (O(m))
+    this._fillEmptyBuckets(buckets, history);
+
+    // Step 4: Cleanup - remove first, last, and trailing null buckets
+    buckets.shift();
+    buckets.pop();
+    this._removeTrailingNulls(buckets);
+
+    return buckets;
+  }
+
+  private _fillEmptyBuckets(buckets: HistoryBuckets, history: EntityEntryCache): void {
     let lastNonNullBucketValue: number | [number, number] | null = null;
     const now = new Date().getTime();
+
     buckets.forEach((bucket, index) => {
       if (bucket.data.length === 0) {
-        if (this._config.group_by.fill === 'last' && (bucket.timestamp <= now || this._config.data_generator)) {
-          bucket.data[0] = [bucket.timestamp, lastNonNullBucketValue] as HistoryPoint;
-        } else if (this._config.group_by.fill === 'zero' && (bucket.timestamp <= now || this._config.data_generator)) {
-          bucket.data[0] = [bucket.timestamp, 0] as HistoryPoint;
-        } else if (this._config.group_by.fill === 'null') {
-          bucket.data[0] = [bucket.timestamp, null] as HistoryPoint;
+        // Fill empty bucket based on configuration
+        if (bucket.timestamp <= now || this._config.data_generator) {
+          bucket.data[0] = this._createFillPoint(bucket.timestamp, lastNonNullBucketValue);
         }
       } else {
-        lastNonNullBucketValue = bucket.data.slice(-1)[0][1];
+        lastNonNullBucketValue = bucket.data[bucket.data.length - 1][1];
       }
+
+      // Handle start_with_last configuration
       if (this._config.group_by.start_with_last) {
         if (index > 0) {
           if (bucket.data.length === 0 || bucket.data[0][0] !== bucket.timestamp) {
             const prevBucketData = buckets[index - 1].data;
-            bucket.data.unshift([bucket.timestamp, prevBucketData[prevBucketData.length - 1][1]] as HistoryPoint);
+            if (prevBucketData.length > 0) {
+              bucket.data.unshift([bucket.timestamp, prevBucketData[prevBucketData.length - 1][1]] as HistoryPoint);
+            }
           }
         } else {
-          const firstIndexAfter = history.data.findIndex((entry) => {
-            if (entry[0] > bucket.timestamp) return true;
-            return false;
-          });
+          // First bucket - find previous value from history
+          const firstIndexAfter = history.data.findIndex((entry) => entry[0] > bucket.timestamp);
           if (firstIndexAfter > 0) {
             bucket.data.unshift([bucket.timestamp, history.data[firstIndexAfter - 1][1]] as HistoryPoint);
           }
         }
       }
     });
-    buckets.shift();
-    buckets.pop();
-    // Remove nulls at the end
+  }
+
+  private _createFillPoint(timestamp: number, lastValue: number | [number, number] | null): HistoryPoint {
+    const fill = this._config.group_by.fill;
+    if (fill === 'last') {
+      return [timestamp, lastValue];
+    } else if (fill === 'zero') {
+      return [timestamp, 0];
+    } else if (fill === 'null') {
+      return [timestamp, null];
+    }
+    return [timestamp, null];
+  }
+
+  private _removeTrailingNulls(buckets: HistoryBuckets): void {
     while (
       buckets.length > 0 &&
       (buckets[buckets.length - 1].data.length === 0 ||
@@ -571,7 +610,6 @@ export default class GraphEntry {
     ) {
       buckets.pop();
     }
-    return buckets;
   }
 
   private _sum(items: EntityCachePoints): number {
