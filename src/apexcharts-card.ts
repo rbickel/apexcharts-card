@@ -948,7 +948,7 @@ class ChartsCard extends LitElement {
           gradient: {
             type: 'vertical',
             colorStops: this._config.series_in_graph.map((serie, index) => {
-              if (!serie.color_threshold || ![undefined, 'area', 'line'].includes(serie.type)) return [];
+              if (!serie.color_threshold || ![undefined, 'area', 'line', 'rangeArea'].includes(serie.type)) return [];
               const min = this._graphs?.[serie.index]?.min;
               const max = this._graphs?.[serie.index]?.max;
               if (min === undefined || max === undefined) return [];
@@ -963,7 +963,8 @@ class ChartsCard extends LitElement {
             gradient: {
               type: 'vertical',
               colorStops: this._config.series_in_brush.map((serie, index) => {
-                if (!serie.color_threshold || ![undefined, 'area', 'line'].includes(serie.type)) return [];
+                if (!serie.color_threshold || ![undefined, 'area', 'line', 'rangeArea'].includes(serie.type))
+                  return [];
                 const min = this._graphs?.[serie.index]?.min;
                 const max = this._graphs?.[serie.index]?.max;
                 if (min === undefined || max === undefined) return [];

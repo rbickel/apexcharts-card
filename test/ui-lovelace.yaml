@@ -515,6 +515,22 @@ views:
                   duration: 20min
 
           - type: custom:apexcharts-card
+            header:
+              show: true
+              title: rangeArea
+            chart_type: rangeArea
+            graph_span: 24h
+            series:
+              - entity: sensor.random0_100
+                data_generator: |
+                  const step = 60 * 60 * 1000;
+                  return Array.from({ length: 24 }, (_, i) => {
+                    const x = start.getTime() + (i * step);
+                    const base = 50 + Math.sin(i / 3) * 15;
+                    return [x, [base - 5, base + 5]];
+                  });
+
+          - type: custom:apexcharts-card
             graph_span: 1h
             update_delay: 5.5s
             # apex_config:
