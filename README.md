@@ -333,6 +333,7 @@ The position of the marker will only update when the card updates (state change 
 | `median` | v1.0.0 | Will return the median of all the states in each bucket |
 | `delta` | v1.0.0 | Will return the delta between the biggest and smallest state in each bucket |
 | `diff` | v1.4.0 | Will return the difference between the last and the first entry in the bucket |
+| `minmax` | v2.2.3 | Will return both min and max as a range `[min, max]` for each bucket. Use with `type: rangeArea` to display a range area chart |
 
 ### `chart_type` Options
 
@@ -1026,6 +1027,84 @@ series:
     group_by:
       duration: 10min
       func: first
+```
+
+### RangeArea with Min/Max Aggregation
+
+Display temperature data as a range area showing minimum and maximum values with aggregation:
+
+```yaml
+type: custom:apexcharts-card
+graph_span: 24h
+header:
+  show: true
+  title: Temperature Range (Min/Max)
+  show_states: true
+series:
+  - entity: sensor.temperature
+    name: Temperature Range
+    type: rangeArea
+    curve: smooth
+    opacity: 0.3
+    stroke_width: 1
+    group_by:
+      duration: 1h
+      func: minmax
+      fill: last
+```
+
+Or using Home Assistant statistics for long-term data:
+
+```yaml
+type: custom:apexcharts-card
+graph_span: 7d
+header:
+  show: true
+  title: Weekly Temperature Range
+series:
+  - entity: sensor.temperature
+    name: Temperature Range
+    type: rangeArea
+    curve: smooth
+    opacity: 0.3
+    stroke_width: 1
+    statistics:
+      period: hour
+      align: middle
+```
+
+Combine with a line series for average temperature:
+
+```yaml
+type: custom:apexcharts-card
+graph_span: 24h
+header:
+  show: true
+  title: Temperature with Range
+series:
+  # Range area showing min/max
+  - entity: sensor.temperature
+    name: Min/Max Range
+    type: rangeArea
+    color: blue
+    opacity: 0.2
+    stroke_width: 1
+    curve: smooth
+    group_by:
+      duration: 1h
+      func: minmax
+    show:
+      legend_value: false
+  # Average line on top
+  - entity: sensor.temperature
+    name: Average
+    type: line
+    color: blue
+    stroke_width: 2
+    curve: smooth
+    group_by:
+      duration: 1h
+      func: avg
 ```
 
 ### Compare data from today with yesterday

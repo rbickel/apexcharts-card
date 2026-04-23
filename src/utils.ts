@@ -1,6 +1,6 @@
 import { HassEntities, HassEntity } from 'home-assistant-js-websocket';
 import { compress as lzStringCompress, decompress as lzStringDecompress } from 'lz-string';
-import { ChartCardConfig, EntityCachePoints } from './types';
+import { ChartCardConfig, EntityCachePoints, HistoryPoint } from './types';
 import { TinyColor } from '@ctrl/tinycolor';
 import parse from 'parse-duration';
 import { ChartCardExternalConfig, ChartCardPrettyTime, ChartCardSeriesExternalConfig } from './types-config';
@@ -137,7 +137,7 @@ export function validateOffset(interval: string, prefix: string): number {
 export function offsetData(data: EntityCachePoints, offset: number | undefined): EntityCachePoints {
   if (offset) {
     return data.map((entry) => {
-      return [entry[0] - offset, entry[1]];
+      return [entry[0] - offset, entry[1]] as HistoryPoint;
     });
   }
   return data;

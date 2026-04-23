@@ -153,7 +153,7 @@ class ChartsCard extends LitElement {
 
   private _offset = 0;
 
-  @property({ attribute: false }) private _headerState: (number | null)[] = [];
+  @property({ attribute: false }) private _headerState: (number | [number, number] | null)[] = [];
 
   private _dataLoaded = false;
 
@@ -745,8 +745,10 @@ class ChartsCard extends LitElement {
                   <span id="state" style="${this._computeHeaderStateColor(serie, this._headerState?.[index])}"
                     >${this._headerState?.[index] === 0
                       ? 0
-                      : serie.show.as_duration
-                      ? prettyPrintTime(this._headerState?.[index], serie.show.as_duration)
+                      : serie.show.as_duration && this._headerState?.[index]
+                      ? Array.isArray(this._headerState[index])
+                        ? `${prettyPrintTime((this._headerState[index] as [number, number])[0], serie.show.as_duration)} - ${prettyPrintTime((this._headerState[index] as [number, number])[1], serie.show.as_duration)}`
+                        : prettyPrintTime(this._headerState[index] as number, serie.show.as_duration)
                       : this._computeLastState(this._headerState?.[index], index) || NO_VALUE}</span
                   >
                   ${!serie.show.as_duration
@@ -874,13 +876,13 @@ class ChartsCard extends LitElement {
               lastPoint[0] < end.getTime() - this._serverTimeOffset
             ) {
               // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
-              data.push([end.getTime() - this._serverTimeOffset, lastPoint[1]]);
+              data.push([end.getTime() - this._serverTimeOffset, lastPoint[1]] as HistoryPoint);
             } else if (
               this._config?.series[index].extend_to === 'now' &&
               lastPoint[0] < now.getTime() - this._serverTimeOffset
             ) {
               // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
-              data.push([now.getTime() - this._serverTimeOffset, lastPoint[1]]);
+              data.push([now.getTime() - this._serverTimeOffset, lastPoint[1]] as HistoryPoint);
             }
           }
           const result = this._config?.series[index].invert ? { data: this._invertData(data) } : { data };
@@ -911,7 +913,8 @@ class ChartsCard extends LitElement {
               data = 0;
             } else {
               const lastState = graph.lastState;
-              data = lastState || 0;
+              // For range values in non-timeline charts, use average
+              data = lastState ? (Array.isArray(lastState) ? (lastState[0] + lastState[1]) / 2 : lastState) : 0;
               if (this._config?.series[index].show.in_header !== 'raw') {
                 this._headerState[index] = lastState;
               }
@@ -1125,7 +1128,7 @@ class ChartsCard extends LitElement {
       this._config.apex_config.yaxis.length > 1;
     points.push({
       x: offset ? value[0] - offset : value[0],
-      y: invert && value[1] ? -value[1] : value[1],
+      y: invert && value[1] !== null && !Array.isArray(value[1]) ? -value[1] : Array.isArray(value[1]) ? value[1][0] : value[1],
       seriesIndex: index,
       yAxisIndex: multiYAxis ? index : 0,
       marker: {
@@ -1133,7 +1136,9 @@ class ChartsCard extends LitElement {
         fillColor: 'var(--card-background-color)',
       },
       label: {
-        text: myFormatNumber(value[1], this._hass?.locale, serie.float_precision),
+        text: Array.isArray(value[1])
+          ? `${myFormatNumber(value[1][0], this._hass?.locale, serie.float_precision)} - ${myFormatNumber(value[1][1], this._hass?.locale, serie.float_precision)}`
+          : myFormatNumber(value[1], this._hass?.locale, serie.float_precision),
         borderColor: 'var(--card-background-color)',
         borderWidth: 2,
         style: {
@@ -1219,10 +1224,16 @@ class ChartsCard extends LitElement {
           if (this._config?.series[id].invert) {
             const cmin = lMinMax.min[1];
             const cmax = lMinMax.max[1];
-            if (cmin !== null) {
+            if (Array.isArray(cmin)) {
+              // For range values, invert both bounds
+              lMinMax.max[1] = [-cmin[1], -cmin[0]] as [number, number];
+            } else if (cmin !== null) {
               lMinMax.max[1] = -cmin;
             }
-            if (cmax !== null) {
+            if (Array.isArray(cmax)) {
+              // For range values, invert both bounds
+              lMinMax.min[1] = [-cmax[1], -cmax[0]] as [number, number];
+            } else if (cmax !== null) {
               lMinMax.min[1] = -cmax;
             }
           }
@@ -1232,15 +1243,19 @@ class ChartsCard extends LitElement {
         let max: number | null = null;
         minMax?.forEach((elt) => {
           if (!elt) return;
+          // Handle range values [min, max] or scalar values
+          const minValue = Array.isArray(elt.min[1]) ? elt.min[1][0] : elt.min[1];
+          const maxValue = Array.isArray(elt.max[1]) ? elt.max[1][1] : elt.max[1];
+
           if (min === undefined || min === null) {
-            min = elt.min[1];
-          } else if (elt.min[1] !== null && min > elt.min[1]) {
-            min = elt.min[1];
+            min = minValue;
+          } else if (minValue !== null && min > minValue) {
+            min = minValue;
           }
           if (max === undefined || max === null) {
-            max = elt.max[1];
-          } else if (elt.max[1] !== null && max < elt.max[1]) {
-            max = elt.max[1];
+            max = maxValue;
+          } else if (maxValue !== null && max < maxValue) {
+            max = maxValue;
           }
         });
         if (yaxis.align_to !== undefined) {
@@ -1416,7 +1431,7 @@ class ChartsCard extends LitElement {
     return invert ? result : result.reverse();
   }
 
-  private _computeHeaderStateColor(serie: ChartCardSeriesConfig, value: number | null): string {
+  private _computeHeaderStateColor(serie: ChartCardSeriesConfig, value: number | [number, number] | null): string {
     let color = '';
     if (this._config?.header?.colorize_states) {
       if (
@@ -1426,8 +1441,10 @@ class ChartsCard extends LitElement {
         serie.color_threshold.length > 0 &&
         value !== null
       ) {
+        // For range values, use the average for color threshold
+        const numValue = Array.isArray(value) ? (value[0] + value[1]) / 2 : value;
         const index = serie.color_threshold.findIndex((thres) => {
-          return thres.value > value;
+          return thres.value > numValue;
         });
         if (index < 0) {
           color = computeColor(
@@ -1441,7 +1458,7 @@ class ChartsCard extends LitElement {
           if (serie.type === 'column') {
             color = computeColor(prev.color || this._headerColors[serie.index]);
           } else {
-            const factor = (value - prev.value) / (next.value - prev.value);
+            const factor = (numValue - prev.value) / (next.value - prev.value);
             color = interpolateColor(
               computeColor(prev.color || this._headerColors[serie.index]),
               computeColor(next.color || this._headerColors[serie.index]),
@@ -1456,8 +1473,12 @@ class ChartsCard extends LitElement {
     return color ? `color: ${color};` : '';
   }
 
-  private _computeLastState(value: number | null, index: number): string | number | null {
+  private _computeLastState(value: number | [number, number] | null, index: number): string | number | null {
     if (value === null) return value;
+    if (Array.isArray(value)) {
+      // Format range values as "min - max"
+      return `${myFormatNumber(value[0], this._hass?.locale, this._config?.series[index].float_precision)} - ${myFormatNumber(value[1], this._hass?.locale, this._config?.series[index].float_precision)}`;
+    }
     return myFormatNumber(value, this._hass?.locale, this._config?.series[index].float_precision);
   }
 
@@ -1488,7 +1509,10 @@ class ChartsCard extends LitElement {
   private _invertData(data: EntityCachePoints): EntityCachePoints {
     return data.map((item) => {
       if (item[1] === null) return item;
-      return [item[0], -item[1]];
+      if (Array.isArray(item[1])) {
+        return [item[0], [-item[1][1], -item[1][0]] as [number, number]] as HistoryPoint;
+      }
+      return [item[0], -item[1]] as HistoryPoint;
     });
   }
 

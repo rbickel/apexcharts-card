@@ -334,8 +334,11 @@ function getDataLabelsFormatter(
         if (conf.series_in_graph[opts.seriesIndex].show.datalabels === 'percent') {
           return myFormatNumber(value, lHass?.locale, conf.series_in_graph[opts.seriesIndex].float_precision);
         }
+        const lastState = lgraphs?.[conf.series_in_graph[opts.seriesIndex].index]?.lastState;
+        // For range values, use average for datalabels
+        const numValue = lastState && Array.isArray(lastState) ? (lastState[0] + lastState[1]) / 2 : lastState;
         return myFormatNumber(
-          lgraphs?.[conf.series_in_graph[opts.seriesIndex].index]?.lastState,
+          numValue,
           lHass?.locale,
           conf.series_in_graph[opts.seriesIndex].float_precision,
         );

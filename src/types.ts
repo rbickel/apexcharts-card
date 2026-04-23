@@ -50,7 +50,8 @@ export interface EntityEntryCache {
 
 export type EntityCachePoints = Array<HistoryPoint>;
 
-export type HistoryPoint = [number, number | null];
+export type HistoryPoint = [number, number | null] | [number, [number, number]];
+export type RangeHistoryPoint = [number, [number, number]];
 
 export interface Statistics {
   [statisticId: string]: StatisticValue[];
