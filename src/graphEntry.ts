@@ -3,6 +3,7 @@ import {
   ChartCardSeriesConfig,
   EntityCachePoints,
   EntityEntryCache,
+  EntityAggregatedCache,
   HassHistory,
   HassHistoryEntry,
   HistoryBuckets,
@@ -198,6 +199,27 @@ export default class GraphEntry {
     return compressed
       ? localForage.setItem(`${key}_${this._md5Config}`, compress(data))
       : localForage.setItem(`${key}_${this._md5Config}-raw`, data);
+  }
+
+  private async _getAggregatedCache(key: string): Promise<EntityAggregatedCache | undefined> {
+    const data: EntityAggregatedCache | undefined | null = await localForage.getItem(
+      `${key}_${this._md5Config}_agg`,
+    );
+    if (!data) return undefined;
+
+    // Validate aggregation config matches
+    if (data.aggregation_config.duration_ms !== this._groupByDurationMs ||
+        data.aggregation_config.func !== this._config.group_by.func ||
+        data.aggregation_config.fill !== this._config.group_by.fill ||
+        data.aggregation_config.start_with_last !== (this._config.group_by.start_with_last || false)) {
+      return undefined;
+    }
+
+    return data;
+  }
+
+  private async _setAggregatedCache(key: string, data: EntityAggregatedCache): Promise<void> {
+    await localForage.setItem(`${key}_${this._md5Config}_agg`, data);
   }
 
   public async _updateHistory(start: Date, end: Date): Promise<boolean> {
@@ -407,9 +429,60 @@ export default class GraphEntry {
       return false;
     }
     if (this._config.group_by.func !== 'raw') {
-      const res: EntityCachePoints = this._dataBucketer(history, moment.range(startHistory, end)).map((bucket) => {
+      // Try to use aggregated cache for better performance
+      if (this._cache) {
+        const aggCache = await this._getAggregatedCache(this._entityID);
+        if (aggCache && aggCache.buckets.length > 0) {
+          // Check if we can use cached buckets
+          const lastBucketTime = aggCache.buckets[aggCache.buckets.length - 1].timestamp;
+          const cacheEndTime = lastBucketTime + this._groupByDurationMs;
+
+          // If cache covers our range, use it
+          if (cacheEndTime >= end.getTime()) {
+            // Filter buckets to our time range
+            const filteredBuckets = aggCache.buckets.filter(
+              bucket => bucket.timestamp >= startHistory.getTime() && bucket.timestamp < end.getTime()
+            );
+            const res: EntityCachePoints = filteredBuckets.map((bucket) => {
+              return [bucket.timestamp, this._func(bucket.data)] as HistoryPoint;
+            });
+            if ([undefined, 'line', 'area', 'rangeArea'].includes(this._config.type)) {
+              while (res.length > 0 && res[0][1] === null) res.shift();
+            }
+            this._computedHistory = res;
+            this._updating = false;
+            return true;
+          }
+        }
+      }
+
+      // Compute buckets from scratch
+      const buckets = this._dataBucketer(history, moment.range(startHistory, end));
+      const res: EntityCachePoints = buckets.map((bucket) => {
         return [bucket.timestamp, this._func(bucket.data)] as HistoryPoint;
       });
+
+      // Save aggregated cache for future use
+      if (this._cache && buckets.length > 0) {
+        const aggCache: EntityAggregatedCache = {
+          span: this._graphSpan,
+          card_version: pjson.version,
+          last_fetched: new Date(),
+          data: history.data,
+          aggregation_config: {
+            duration_ms: this._groupByDurationMs,
+            func: this._config.group_by.func,
+            fill: this._config.group_by.fill,
+            start_with_last: this._config.group_by.start_with_last || false,
+          },
+          buckets: buckets,
+          raw_data_hash: SparkMD5.hash(JSON.stringify(history.data.slice(-100))),
+        };
+        await this._setAggregatedCache(this._entityID, aggCache).catch((err) => {
+          log(err);
+        });
+      }
+
       if ([undefined, 'line', 'area', 'rangeArea'].includes(this._config.type)) {
         while (res.length > 0 && res[0][1] === null) res.shift();
       }

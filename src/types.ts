@@ -50,6 +50,17 @@ export interface EntityEntryCache {
   data: EntityCachePoints;
 }
 
+export interface EntityAggregatedCache extends EntityEntryCache {
+  aggregation_config: {
+    duration_ms: number;
+    func: GroupByFunc;
+    fill: GroupByFill;
+    start_with_last: boolean;
+  };
+  buckets: HistoryBuckets;
+  raw_data_hash: string;
+}
+
 export type EntityCachePoints = Array<HistoryPoint>;
 
 export type HistoryPoint = [number, number | null] | [number, [number, number]];
